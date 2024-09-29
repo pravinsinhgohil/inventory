@@ -9,6 +9,7 @@ from django.contrib.auth.models import User
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
+import logging
 
 
 class RegisterView(APIView):
@@ -23,11 +24,12 @@ class RegisterView(APIView):
             return Response({"error": "Please provide all required fields"}, status=status.HTTP_400_BAD_REQUEST)
 
         if User.objects.filter(username=username).exists():
+            logging.info(f"user already exist with username {username}")
             return Response({"error": "Username already exists"}, status=status.HTTP_400_BAD_REQUEST)
 
         user = User.objects.create_user(username=username, password=password, email=email)
         user.save()
-
+        logging.info(f"user created with username {username}")
         # Generate tokens for the user
         refresh = RefreshToken.for_user(user)
 
@@ -59,7 +61,7 @@ class InventoryListView(generics.ListAPIView):
         else:
             # Use cached data
             serializer = cached_products
-
+        logging.info(f"listing all the inventories")
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
@@ -75,12 +77,14 @@ class InventoryRetrieveView(generics.RetrieveAPIView):
     def get(self, request, pk):
         cached_product = cache.get(f'product_{pk}')
         if cached_product:
+            logging.info(f"returning cached data")
             # If cached, return the cached data
             return Response(cached_product, status=status.HTTP_200_OK)
 
         try:
             # If not cached, retrieve product from the database
             product = Inventory.objects.get(pk=pk)
+            logging.info(f"fetch inventory using primary key {pk}")
         except Inventory.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
 
@@ -105,6 +109,7 @@ class InventoryCreateView(generics.CreateAPIView):
     def perform_create(self, serializer):
         try:
             serializer.save()  # Save the new product instance
+            logging.info(f"inventory object created")
             # Invalidate the cache when a new product is created
             cache.delete('products')
         except Exception as e:
@@ -127,6 +132,7 @@ class InventoryUpdateView(generics.UpdateAPIView):
         """
         try:
             serializer.save()  # Save the updated product instance
+            logging.info(f"inventory object updated")
             # Invalidate the cache when a product is updated
             cache.delete(f'product_{self.kwargs["pk"]}')
             cache.delete('products')
@@ -151,6 +157,7 @@ class InventoryDestroyView(generics.DestroyAPIView):
             cache.delete(f'product_{instance.pk}')
             cache.delete('products')
             instance.delete()  # Delete the inventory item
+            logging.info(f"inventory object deleted")
         except Exception as e:
             raise Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
